@@ -1,0 +1,57 @@
+# Unity
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# Arquivos de log
+*.log
+
+# Blender
+*.blend1
+*.blend1.meta
+
+# Memory Captures
+[Mm]emoryCaptures/
+
+# Visual Studio / Rider
+.vs/
+.gradle/
+.idea/
+.consulo/
+
+# Arquivos gerados pelo Unity
+ExportedObj/
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Crash reports
+sysinfo.txt
+mono_crash.*
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Outros
+.DS_Store
+Thumbs.db
+Desktop.ini
