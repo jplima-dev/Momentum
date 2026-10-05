@@ -53,5 +53,6 @@ mono_crash.*
 
 # Outros
 .DS_Store
+.vscode/
 Thumbs.db
 Desktop.ini
