@@ -34,4 +34,4 @@ Novas mecânicas, desafios, ambientes e melhorias de movimentação serão adici
 
 ---
 
-*Momentum — Master the movement.*
+Momentumt.*
