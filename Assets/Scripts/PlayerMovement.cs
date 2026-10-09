@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections.Generic;
 
 public class PlayerMovement : MonoBehaviour
 {
@@ -8,6 +9,14 @@ public class PlayerMovement : MonoBehaviour
     public float velocidadeCorrida = 10f;
     public float aceleracao = 18f;
     public float desaceleracaoDerrapagem = 20f;
+    public float desaceleracaoCorrida = 45f;
+    public float tempoParaCorrer = 5f;
+
+    [Header("Inclinação da Rampa")]
+    public float distanciaDeteccaoRampa = 1.5f;
+    public float alturaOrigemRaycast = 0.3f;
+    public float suavidadeRampa = 8f;
+    public float limiteInclinacaoRampa = 60f;
 
     [Header("Pulo")]
     public float forcaPulo = 8f;
@@ -25,17 +34,16 @@ public class PlayerMovement : MonoBehaviour
     public float multiplicadorImpulso = 1.5f;
     public float desaceleracaoImpulso = 30f;
 
-    [Header("Inclinação")]
+    [Header("Inclinação Lateral Visual")]
     public float inclinacaoLateral = 20f;
-    public float suavidadeInclinacao = 10f;
-    public float suavidadeRetorno = 25f;
+    public float velocidadeInclinacao = 180f;
+    public float velocidadeRetorno = 250f;
 
     [Header("VFX")]
     public ParticleSystem vfxPulo;
 
     [Header("Referências")]
     public Transform cameraTransform;
-    public Transform modeloVisual;
 
     private CharacterController controller;
     private Animator animator;
@@ -45,35 +53,75 @@ public class PlayerMovement : MonoBehaviour
 
     private float velocidadeVertical;
     private float momentum;
+    private float tempoAndando;
 
     private bool estaEmImpulso;
     private bool segundoPuloUsado;
+    private bool correndo;
+    private bool correrAposDash;
 
-    private Quaternion rotacaoVisualOriginal;
+    // =========================
+    // ROTAÇÃO PRINCIPAL
+    // =========================
+
+    private float rotacaoY;
+
+    // =========================
+    // RAMPA
+    // =========================
+
+    private Quaternion rotacaoRampaAtual;
+
+    // =========================
+    // INCLINAÇÃO VISUAL
+    // =========================
+
+    private float inclinacaoZ;
+    private float inclinacaoAlvoZ;
+
+    // =========================
+    // PROTEÇÃO
+    // =========================
+
+    private Vector3 posicaoProtegida;
+    private Quaternion rotacaoProtegida;
+
+    // =========================
+    // PARTES VISUAIS
+    // =========================
+
+    private readonly List<Transform> partesVisuais =
+        new List<Transform>();
 
     void Start()
     {
         controller = GetComponent<CharacterController>();
         animator = GetComponentInChildren<Animator>();
 
-        if (cameraTransform == null && Camera.main != null)
+        if (controller == null)
+        {
+            Debug.LogError(
+                "PlayerMovement precisa estar no mesmo objeto que o CharacterController."
+            );
+        }
+
+        if (animator != null)
+        {
+            animator.applyRootMotion = false;
+        }
+
+        if (cameraTransform == null &&
+            Camera.main != null)
         {
             cameraTransform = Camera.main.transform;
         }
 
-        if (modeloVisual == null)
-        {
-            modeloVisual = transform.parent;
-        }
-
-        if (modeloVisual != null)
-        {
-            rotacaoVisualOriginal = modeloVisual.localRotation;
-        }
+        ConfigurarPartesVisuais();
 
         if (vfxPulo == null)
         {
-            vfxPulo = GetComponentInChildren<ParticleSystem>(true);
+            vfxPulo =
+                GetComponentInChildren<ParticleSystem>(true);
         }
 
         if (vfxPulo != null)
@@ -85,6 +133,24 @@ public class PlayerMovement : MonoBehaviour
                 ParticleSystemStopBehavior.StopEmittingAndClear
             );
         }
+
+        // Rotação Y inicial
+        rotacaoY = transform.eulerAngles.y;
+
+        // Começa sem inclinação da rampa
+        rotacaoRampaAtual =
+            Quaternion.Euler(
+                0f,
+                rotacaoY,
+                0f
+            );
+
+        // Inclinação lateral começa zerada
+        inclinacaoZ = 0f;
+        inclinacaoAlvoZ = 0f;
+
+        posicaoProtegida = transform.position;
+        rotacaoProtegida = transform.rotation;
     }
 
     void Update()
@@ -120,6 +186,47 @@ public class PlayerMovement : MonoBehaviour
         {
             impulsoMomentum = Vector3.zero;
             estaEmImpulso = false;
+        }
+
+        // Atualiza o alinhamento da rampa
+        AtualizarAlinhamentoRampa();
+
+        // Proteção
+        posicaoProtegida = transform.position;
+        rotacaoProtegida = transform.rotation;
+    }
+
+    void LateUpdate()
+    {
+        // Protege o Personagem contra alterações externas
+        transform.position = posicaoProtegida;
+        transform.rotation = rotacaoProtegida;
+
+        // Inclinação lateral continua sendo
+        // apenas visual.
+        AtualizarInclinacaoVisual();
+    }
+
+    void ConfigurarPartesVisuais()
+    {
+        partesVisuais.Clear();
+
+        for (int i = 0; i < transform.childCount; i++)
+        {
+            Transform filho =
+                transform.GetChild(i);
+
+            if (filho.GetComponent<ParticleSystem>() != null)
+            {
+                continue;
+            }
+
+            if (filho.GetComponent<CharacterController>() != null)
+            {
+                continue;
+            }
+
+            partesVisuais.Add(filho);
         }
     }
 
@@ -170,9 +277,35 @@ public class PlayerMovement : MonoBehaviour
         bool estaMovendo =
             direcao.sqrMagnitude > 0.001f;
 
-        bool correndo =
-            Keyboard.current.leftShiftKey.isPressed ||
-            Keyboard.current.rightShiftKey.isPressed;
+        // =========================
+        // CORRIDA AUTOMÁTICA
+        // =========================
+
+        if (estaMovendo &&
+            controller.isGrounded &&
+            !estaEmImpulso)
+        {
+            if (!correrAposDash)
+            {
+                tempoAndando += Time.deltaTime;
+
+                if (tempoAndando >= tempoParaCorrer)
+                {
+                    correndo = true;
+                }
+            }
+            else
+            {
+                correndo = true;
+                tempoAndando = tempoParaCorrer;
+            }
+        }
+        else if (!estaMovendo)
+        {
+            tempoAndando = 0f;
+            correndo = false;
+            correrAposDash = false;
+        }
 
         float velocidadeDesejada =
             correndo
@@ -182,35 +315,69 @@ public class PlayerMovement : MonoBehaviour
         float velocidadeAntes =
             velocidadeHorizontal.magnitude;
 
+        // =========================
+        // MOVIMENTO
+        // =========================
+
         if (estaMovendo && !estaEmImpulso)
         {
             velocidadeHorizontal =
                 Vector3.MoveTowards(
                     velocidadeHorizontal,
                     direcao * velocidadeDesejada,
-                    aceleracao * Time.deltaTime
+                    aceleracao *
+                    Time.deltaTime
                 );
 
-            Quaternion rotacaoAlvo =
-                Quaternion.LookRotation(direcao);
+            // Apenas atualiza o Y.
+            // A inclinação da rampa será adicionada
+            // separadamente.
+            if (controller.isGrounded)
+            {
+                float anguloDesejado =
+                    Mathf.Atan2(
+                        direcao.x,
+                        direcao.z
+                    ) * Mathf.Rad2Deg;
 
-            transform.rotation =
-                Quaternion.Slerp(
-                    transform.rotation,
-                    rotacaoAlvo,
-                    12f * Time.deltaTime
-                );
+                rotacaoY =
+                    Mathf.LerpAngle(
+                        rotacaoY,
+                        anguloDesejado,
+                        12f *
+                        Time.deltaTime
+                    );
+            }
         }
-        else if (!estaMovendo && !estaEmImpulso)
+        else if (!estaMovendo &&
+                 !estaEmImpulso)
         {
+            float desaceleracaoAtual;
+
+            if (velocidadeHorizontal.magnitude >
+                velocidadeNormal)
+            {
+                desaceleracaoAtual =
+                    desaceleracaoCorrida;
+            }
+            else
+            {
+                desaceleracaoAtual =
+                    desaceleracaoDerrapagem;
+            }
+
             velocidadeHorizontal =
                 Vector3.MoveTowards(
                     velocidadeHorizontal,
                     Vector3.zero,
-                    desaceleracaoDerrapagem *
+                    desaceleracaoAtual *
                     Time.deltaTime
                 );
         }
+
+        // =========================
+        // MOMENTUM DA DERRAPAGEM
+        // =========================
 
         float velocidadeDepois =
             velocidadeHorizontal.magnitude;
@@ -235,12 +402,18 @@ public class PlayerMovement : MonoBehaviour
                 );
         }
 
+        // =========================
+        // MOMENTUM DA QUEDA
+        // =========================
+
         if (!estaEmImpulso &&
             !controller.isGrounded &&
             velocidadeVertical < 0f)
         {
             momentum +=
-                Mathf.Abs(velocidadeVertical) *
+                Mathf.Abs(
+                    velocidadeVertical
+                ) *
                 ganhoMomentumQueda *
                 Time.deltaTime;
 
@@ -251,6 +424,10 @@ public class PlayerMovement : MonoBehaviour
                     momentumMaximo
                 );
         }
+
+        // =========================
+        // ANIMAÇÕES
+        // =========================
 
         if (animator != null)
         {
@@ -270,37 +447,255 @@ public class PlayerMovement : MonoBehaviour
             );
         }
 
-        if (modeloVisual != null)
-        {
-            float inclinacaoAlvo = 0f;
+        // =========================
+        // INCLINAÇÃO LATERAL
+        // =========================
 
-            if (estaMovendo)
+        if (controller.isGrounded)
+        {
+            if (estaMovendo &&
+                !estaEmImpulso)
             {
-                inclinacaoAlvo =
-                    x *
+                inclinacaoAlvoZ =
+                    -x *
                     inclinacaoLateral;
             }
+            else
+            {
+                inclinacaoAlvoZ = 0f;
+            }
+        }
+    }
 
-            Quaternion rotacaoAlvo =
-                rotacaoVisualOriginal *
-                Quaternion.Euler(
-                    0f,
-                    0f,
-                    inclinacaoAlvo
+    void AtualizarAlinhamentoRampa()
+    {
+        // No ar não muda a rotação.
+        if (!controller.isGrounded)
+            return;
+
+        RaycastHit hit;
+        bool encontrouChao =
+            EncontrarChao(
+                out hit
+            );
+
+        Quaternion rotacaoHorizontal =
+            Quaternion.Euler(
+                0f,
+                rotacaoY,
+                0f
+            );
+
+        Quaternion alvo;
+
+        if (!encontrouChao)
+        {
+            // Sem chão detectado:
+            // volta para a posição reta.
+            alvo =
+                rotacaoHorizontal;
+        }
+        else
+        {
+            float anguloRampa =
+                Vector3.Angle(
+                    hit.normal,
+                    Vector3.up
                 );
 
-            float suavidade =
-                inclinacaoAlvo != 0f
-                    ? suavidadeInclinacao
-                    : suavidadeRetorno;
+            if (anguloRampa >
+                limiteInclinacaoRampa)
+            {
+                alvo =
+                    rotacaoHorizontal;
+            }
+            else
+            {
+                // Direção do personagem projetada
+                // sobre a superfície da rampa.
+                Vector3 frente =
+                    rotacaoHorizontal *
+                    Vector3.forward;
 
-            modeloVisual.localRotation =
-                Quaternion.Slerp(
-                    modeloVisual.localRotation,
-                    rotacaoAlvo,
-                    suavidade *
-                    Time.deltaTime
-                );
+                Vector3 frenteNaRampa =
+                    Vector3.ProjectOnPlane(
+                        frente,
+                        hit.normal
+                    );
+
+                if (frenteNaRampa.sqrMagnitude <
+                    0.001f)
+                {
+                    frenteNaRampa =
+                        frente;
+                }
+
+                frenteNaRampa.Normalize();
+
+                // Mantém o personagem seguindo
+                // a superfície da rampa.
+                alvo =
+                    Quaternion.LookRotation(
+                        frenteNaRampa,
+                        hit.normal
+                    );
+            }
+        }
+
+        rotacaoRampaAtual =
+            Quaternion.Slerp(
+                transform.rotation,
+                alvo,
+                suavidadeRampa *
+                Time.deltaTime
+            );
+
+        transform.rotation =
+            rotacaoRampaAtual;
+    }
+
+    bool EncontrarChao(out RaycastHit melhorHit)
+    {
+        Vector3 origem =
+            transform.position +
+            Vector3.up *
+            alturaOrigemRaycast;
+
+        RaycastHit[] hits =
+            Physics.RaycastAll(
+                origem,
+                Vector3.down,
+                distanciaDeteccaoRampa,
+                Physics.AllLayers,
+                QueryTriggerInteraction.Ignore
+            );
+
+        float menorDistancia =
+            float.MaxValue;
+
+        bool encontrou = false;
+
+        melhorHit = new RaycastHit();
+
+        for (int i = 0;
+             i < hits.Length;
+             i++)
+        {
+            RaycastHit hit =
+                hits[i];
+
+            if (hit.collider == null)
+                continue;
+
+            Transform objeto =
+                hit.collider.transform;
+
+            // Ignora o próprio Personagem
+            if (objeto == transform)
+                continue;
+
+            // Ignora qualquer coisa filha dele
+            if (objeto.IsChildOf(transform))
+                continue;
+
+            if (hit.distance <
+                menorDistancia)
+            {
+                menorDistancia =
+                    hit.distance;
+
+                melhorHit =
+                    hit;
+
+                encontrou = true;
+            }
+        }
+
+        return encontrou;
+    }
+
+    void AtualizarInclinacaoVisual()
+    {
+        if (partesVisuais.Count == 0)
+            return;
+
+        // No ar mantém a última inclinação.
+        if (!controller.isGrounded)
+            return;
+
+        float velocidade;
+
+        if (Mathf.Abs(
+                inclinacaoAlvoZ
+            ) > 0.01f)
+        {
+            velocidade =
+                velocidadeInclinacao;
+        }
+        else
+        {
+            velocidade =
+                velocidadeRetorno;
+        }
+
+        inclinacaoZ =
+            Mathf.MoveTowards(
+                inclinacaoZ,
+                inclinacaoAlvoZ,
+                velocidade *
+                Time.deltaTime
+            );
+
+        Quaternion inclinacao =
+            Quaternion.Euler(
+                0f,
+                0f,
+                inclinacaoZ
+            );
+
+        Vector3 centro =
+            transform.position;
+
+        Quaternion rotacaoMundo =
+            transform.rotation *
+            inclinacao *
+            Quaternion.Inverse(
+                transform.rotation
+            );
+
+        for (int i = 0;
+             i < partesVisuais.Count;
+             i++)
+        {
+            Transform parte =
+                partesVisuais[i];
+
+            if (parte == null)
+                continue;
+
+            Vector3 offset =
+                parte.position -
+                centro;
+
+            Vector3 novoOffset =
+                rotacaoMundo *
+                offset;
+
+            parte.position =
+                centro +
+                novoOffset;
+
+            parte.rotation =
+                rotacaoMundo *
+                parte.rotation;
+        }
+
+        if (Mathf.Abs(
+                inclinacaoAlvoZ
+            ) < 0.01f &&
+            Mathf.Abs(inclinacaoZ) < 0.05f)
+        {
+            inclinacaoZ = 0f;
         }
     }
 
@@ -339,6 +734,10 @@ public class PlayerMovement : MonoBehaviour
         if (estaEmImpulso)
             return;
 
+        // =========================
+        // NO AR
+        // =========================
+
         if (!controller.isGrounded)
         {
             if (!TemDirecaoNoInput())
@@ -350,6 +749,10 @@ public class PlayerMovement : MonoBehaviour
             FazerDashHorizontal();
             return;
         }
+
+        // =========================
+        // NO CHÃO
+        // =========================
 
         FazerDashHorizontal();
     }
@@ -392,6 +795,9 @@ public class PlayerMovement : MonoBehaviour
         if (momentum < momentumMinimoDash)
             return;
 
+        float momentumAntesDoDash =
+            momentum;
+
         Vector3 direcaoDash =
             PegarDirecaoDash();
 
@@ -409,6 +815,22 @@ public class PlayerMovement : MonoBehaviour
         momentum -= momentumUsado;
 
         estaEmImpulso = true;
+
+        correrAposDash =
+            momentumAntesDoDash > 15f;
+
+        if (correrAposDash)
+        {
+            correndo = true;
+            tempoAndando = tempoParaCorrer;
+        }
+        else
+        {
+            correndo = false;
+            tempoAndando = 0f;
+        }
+
+        inclinacaoAlvoZ = 0f;
 
         TocarVfx();
 
@@ -504,7 +926,9 @@ public class PlayerMovement : MonoBehaviour
 
         if (impulsoMomentum.magnitude < 0.05f)
         {
-            impulsoMomentum = Vector3.zero;
+            impulsoMomentum =
+                Vector3.zero;
+
             estaEmImpulso = false;
         }
     }
