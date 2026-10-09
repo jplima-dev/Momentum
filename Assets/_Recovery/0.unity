@@ -1049,6 +1049,11 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1002691904}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!4 &184727380 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -756293364748103852, guid: 9e4bd87789f025540bcf4d1c04b9370b, type: 3}
+  m_PrefabInstance: {fileID: 1444215918}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -8719,11 +8724,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1002691904}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!4 &1378272356 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -756293364748103852, guid: 9e4bd87789f025540bcf4d1c04b9370b, type: 3}
-  m_PrefabInstance: {fileID: 1444215918}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1392211695
 GameObject:
   m_ObjectHideFlags: 0
@@ -9293,7 +9293,7 @@ MonoBehaviour:
   aceleracao: 15
   desaceleracaoDerrapagem: 15
   desaceleracaoCorrida: 45
-  tempoParaCorrer: 5
+  tempoParaCorrer: 2
   distanciaDeteccaoRampa: 1.5
   alturaOrigemRaycast: 0.3
   suavidadeRampa: 8
@@ -9309,11 +9309,11 @@ MonoBehaviour:
   multiplicadorImpulso: 1.5
   desaceleracaoImpulso: 40
   inclinacaoLateral: 10
-  velocidadeInclinacao: 120
-  velocidadeRetorno: 120
+  velocidadeInclinacao: 180
+  velocidadeRetorno: 250
   vfxPulo: {fileID: 559071371}
   cameraTransform: {fileID: 0}
-  cabeca: {fileID: 1378272356}
+  cabeca: {fileID: 184727380}
 --- !u!95 &1719081714
 Animator:
   serializedVersion: 7

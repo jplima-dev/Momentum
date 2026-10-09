@@ -34,6 +34,9 @@ public class PlayerMovement : MonoBehaviour
     public float multiplicadorImpulso = 1.5f;
     public float desaceleracaoImpulso = 30f;
 
+    [Header("Rotação no Ar")]
+    public float velocidadeRotacaoNoAr = 12f;
+
     [Header("Inclinação Lateral Visual")]
     public float inclinacaoLateral = 20f;
     public float velocidadeInclinacao = 180f;
@@ -44,6 +47,9 @@ public class PlayerMovement : MonoBehaviour
 
     [Header("Referências")]
     public Transform cameraTransform;
+
+    [Header("Cabeça")]
+    public Transform cabeca;
 
     private CharacterController controller;
     private Animator animator;
@@ -60,35 +66,16 @@ public class PlayerMovement : MonoBehaviour
     private bool correndo;
     private bool correrAposDash;
 
-    // =========================
-    // ROTAÇÃO PRINCIPAL
-    // =========================
-
     private float rotacaoY;
-
-    // =========================
-    // RAMPA
-    // =========================
-
     private Quaternion rotacaoRampaAtual;
-
-    // =========================
-    // INCLINAÇÃO VISUAL
-    // =========================
 
     private float inclinacaoZ;
     private float inclinacaoAlvoZ;
 
-    // =========================
-    // PROTEÇÃO
-    // =========================
-
     private Vector3 posicaoProtegida;
     private Quaternion rotacaoProtegida;
 
-    // =========================
-    // PARTES VISUAIS
-    // =========================
+    private Quaternion rotacaoCabecaRelativa;
 
     private readonly List<Transform> partesVisuais =
         new List<Transform>();
@@ -110,8 +97,7 @@ public class PlayerMovement : MonoBehaviour
             animator.applyRootMotion = false;
         }
 
-        if (cameraTransform == null &&
-            Camera.main != null)
+        if (cameraTransform == null && Camera.main != null)
         {
             cameraTransform = Camera.main.transform;
         }
@@ -120,8 +106,7 @@ public class PlayerMovement : MonoBehaviour
 
         if (vfxPulo == null)
         {
-            vfxPulo =
-                GetComponentInChildren<ParticleSystem>(true);
+            vfxPulo = GetComponentInChildren<ParticleSystem>(true);
         }
 
         if (vfxPulo != null)
@@ -134,18 +119,27 @@ public class PlayerMovement : MonoBehaviour
             );
         }
 
-        // Rotação Y inicial
         rotacaoY = transform.eulerAngles.y;
 
-        // Começa sem inclinação da rampa
-        rotacaoRampaAtual =
-            Quaternion.Euler(
-                0f,
-                rotacaoY,
-                0f
-            );
+        if (cabeca != null)
+        {
+            Quaternion rotacaoHorizontalInicial =
+                Quaternion.Euler(0f, rotacaoY, 0f);
 
-        // Inclinação lateral começa zerada
+            rotacaoCabecaRelativa =
+                Quaternion.Inverse(rotacaoHorizontalInicial)
+                * cabeca.rotation;
+        }
+        else
+        {
+            Debug.LogWarning(
+                "PlayerMovement: atribua a cabeça no campo Cabeca do Inspector."
+            );
+        }
+
+        rotacaoRampaAtual =
+            Quaternion.Euler(0f, rotacaoY, 0f);
+
         inclinacaoZ = 0f;
         inclinacaoAlvoZ = 0f;
 
@@ -177,9 +171,7 @@ public class PlayerMovement : MonoBehaviour
             Vector3.up * velocidadeVertical;
 
         CollisionFlags colisao =
-            controller.Move(
-                movimento * Time.deltaTime
-            );
+            controller.Move(movimento * Time.deltaTime);
 
         if (estaEmImpulso &&
             (colisao & CollisionFlags.Sides) != 0)
@@ -188,23 +180,32 @@ public class PlayerMovement : MonoBehaviour
             estaEmImpulso = false;
         }
 
-        // Atualiza o alinhamento da rampa
         AtualizarAlinhamentoRampa();
+        AtualizarRotacaoNoAr();
 
-        // Proteção
         posicaoProtegida = transform.position;
         rotacaoProtegida = transform.rotation;
     }
 
     void LateUpdate()
     {
-        // Protege o Personagem contra alterações externas
         transform.position = posicaoProtegida;
         transform.rotation = rotacaoProtegida;
 
-        // Inclinação lateral continua sendo
-        // apenas visual.
         AtualizarInclinacaoVisual();
+        CorrigirRotacaoCabeca();
+    }
+
+    void CorrigirRotacaoCabeca()
+    {
+        if (cabeca == null)
+            return;
+
+        Quaternion rotacaoHorizontal =
+            Quaternion.Euler(0f, rotacaoY, 0f);
+
+        cabeca.rotation =
+            rotacaoHorizontal * rotacaoCabecaRelativa;
     }
 
     void ConfigurarPartesVisuais()
@@ -213,18 +214,13 @@ public class PlayerMovement : MonoBehaviour
 
         for (int i = 0; i < transform.childCount; i++)
         {
-            Transform filho =
-                transform.GetChild(i);
+            Transform filho = transform.GetChild(i);
 
             if (filho.GetComponent<ParticleSystem>() != null)
-            {
                 continue;
-            }
 
             if (filho.GetComponent<CharacterController>() != null)
-            {
                 continue;
-            }
 
             partesVisuais.Add(filho);
         }
@@ -232,11 +228,8 @@ public class PlayerMovement : MonoBehaviour
 
     void ProcessarMovimento()
     {
-        if (Keyboard.current == null ||
-            cameraTransform == null)
-        {
+        if (Keyboard.current == null || cameraTransform == null)
             return;
-        }
 
         float x = 0f;
         float z = 0f;
@@ -253,11 +246,8 @@ public class PlayerMovement : MonoBehaviour
         if (Keyboard.current.sKey.isPressed)
             z = -1f;
 
-        Vector3 frente =
-            cameraTransform.forward;
-
-        Vector3 direita =
-            cameraTransform.right;
+        Vector3 frente = cameraTransform.forward;
+        Vector3 direita = cameraTransform.right;
 
         frente.y = 0f;
         direita.y = 0f;
@@ -265,21 +255,14 @@ public class PlayerMovement : MonoBehaviour
         frente.Normalize();
         direita.Normalize();
 
-        Vector3 direcao =
-            frente * z +
-            direita * x;
+        Vector3 direcao = frente * z + direita * x;
 
         if (direcao.sqrMagnitude > 1f)
-        {
             direcao.Normalize();
-        }
 
-        bool estaMovendo =
-            direcao.sqrMagnitude > 0.001f;
+        bool estaMovendo = direcao.sqrMagnitude > 0.001f;
 
-        // =========================
         // CORRIDA AUTOMÁTICA
-        // =========================
 
         if (estaMovendo &&
             controller.isGrounded &&
@@ -290,9 +273,7 @@ public class PlayerMovement : MonoBehaviour
                 tempoAndando += Time.deltaTime;
 
                 if (tempoAndando >= tempoParaCorrer)
-                {
                     correndo = true;
-                }
             }
             else
             {
@@ -308,126 +289,87 @@ public class PlayerMovement : MonoBehaviour
         }
 
         float velocidadeDesejada =
-            correndo
-                ? velocidadeCorrida
-                : velocidadeNormal;
+            correndo ? velocidadeCorrida : velocidadeNormal;
 
-        float velocidadeAntes =
-            velocidadeHorizontal.magnitude;
+        float velocidadeAntes = velocidadeHorizontal.magnitude;
 
-        // =========================
         // MOVIMENTO
-        // =========================
 
         if (estaMovendo && !estaEmImpulso)
         {
-            velocidadeHorizontal =
-                Vector3.MoveTowards(
-                    velocidadeHorizontal,
-                    direcao * velocidadeDesejada,
-                    aceleracao *
-                    Time.deltaTime
-                );
+            velocidadeHorizontal = Vector3.MoveTowards(
+                velocidadeHorizontal,
+                direcao * velocidadeDesejada,
+                aceleracao * Time.deltaTime
+            );
 
-            // Apenas atualiza o Y.
-            // A inclinação da rampa será adicionada
-            // separadamente.
             if (controller.isGrounded)
             {
                 float anguloDesejado =
-                    Mathf.Atan2(
-                        direcao.x,
-                        direcao.z
-                    ) * Mathf.Rad2Deg;
+                    Mathf.Atan2(direcao.x, direcao.z) * Mathf.Rad2Deg;
 
-                rotacaoY =
-                    Mathf.LerpAngle(
-                        rotacaoY,
-                        anguloDesejado,
-                        12f *
-                        Time.deltaTime
-                    );
+                rotacaoY = Mathf.LerpAngle(
+                    rotacaoY,
+                    anguloDesejado,
+                    12f * Time.deltaTime
+                );
             }
         }
-        else if (!estaMovendo &&
-                 !estaEmImpulso)
+        else if (!estaMovendo && !estaEmImpulso)
         {
             float desaceleracaoAtual;
 
-            if (velocidadeHorizontal.magnitude >
-                velocidadeNormal)
-            {
-                desaceleracaoAtual =
-                    desaceleracaoCorrida;
-            }
+            if (velocidadeHorizontal.magnitude > velocidadeNormal)
+                desaceleracaoAtual = desaceleracaoCorrida;
             else
-            {
-                desaceleracaoAtual =
-                    desaceleracaoDerrapagem;
-            }
+                desaceleracaoAtual = desaceleracaoDerrapagem;
 
-            velocidadeHorizontal =
-                Vector3.MoveTowards(
-                    velocidadeHorizontal,
-                    Vector3.zero,
-                    desaceleracaoAtual *
-                    Time.deltaTime
-                );
+            velocidadeHorizontal = Vector3.MoveTowards(
+                velocidadeHorizontal,
+                Vector3.zero,
+                desaceleracaoAtual * Time.deltaTime
+            );
         }
 
-        // =========================
         // MOMENTUM DA DERRAPAGEM
-        // =========================
 
-        float velocidadeDepois =
-            velocidadeHorizontal.magnitude;
+        float velocidadeDepois = velocidadeHorizontal.magnitude;
 
         float velocidadePerdida =
-            velocidadeAntes -
-            velocidadeDepois;
+            velocidadeAntes - velocidadeDepois;
 
         if (!estaEmImpulso &&
             !estaMovendo &&
             velocidadePerdida > 0f)
         {
-            momentum +=
-                velocidadePerdida *
-                ganhoMomentumDerrapagem;
+            momentum += velocidadePerdida * ganhoMomentumDerrapagem;
 
-            momentum =
-                Mathf.Clamp(
-                    momentum,
-                    0f,
-                    momentumMaximo
-                );
+            momentum = Mathf.Clamp(
+                momentum,
+                0f,
+                momentumMaximo
+            );
         }
 
-        // =========================
         // MOMENTUM DA QUEDA
-        // =========================
 
         if (!estaEmImpulso &&
             !controller.isGrounded &&
             velocidadeVertical < 0f)
         {
             momentum +=
-                Mathf.Abs(
-                    velocidadeVertical
-                ) *
+                Mathf.Abs(velocidadeVertical) *
                 ganhoMomentumQueda *
                 Time.deltaTime;
 
-            momentum =
-                Mathf.Clamp(
-                    momentum,
-                    0f,
-                    momentumMaximo
-                );
+            momentum = Mathf.Clamp(
+                momentum,
+                0f,
+                momentumMaximo
+            );
         }
 
-        // =========================
         // ANIMAÇÕES
-        // =========================
 
         if (animator != null)
         {
@@ -436,177 +378,144 @@ public class PlayerMovement : MonoBehaviour
                 controller.isGrounded &&
                 !estaEmImpulso;
 
-            animator.SetBool(
-                "Andando",
-                andando
-            );
-
-            animator.SetBool(
-                "Correndo",
-                correndo && andando
-            );
+            animator.SetBool("Andando", andando);
+            animator.SetBool("Correndo", correndo && andando);
         }
 
-        // =========================
         // INCLINAÇÃO LATERAL
-        // =========================
 
         if (controller.isGrounded)
         {
-            if (estaMovendo &&
-                !estaEmImpulso)
-            {
-                inclinacaoAlvoZ =
-                    -x *
-                    inclinacaoLateral;
-            }
+            if (estaMovendo && !estaEmImpulso)
+                inclinacaoAlvoZ = -x * inclinacaoLateral;
             else
-            {
                 inclinacaoAlvoZ = 0f;
-            }
         }
     }
 
     void AtualizarAlinhamentoRampa()
     {
-        // No ar não muda a rotação.
         if (!controller.isGrounded)
             return;
 
         RaycastHit hit;
-        bool encontrouChao =
-            EncontrarChao(
-                out hit
-            );
+
+        bool encontrouChao = EncontrarChao(out hit);
 
         Quaternion rotacaoHorizontal =
-            Quaternion.Euler(
-                0f,
-                rotacaoY,
-                0f
-            );
+            Quaternion.Euler(0f, rotacaoY, 0f);
 
         Quaternion alvo;
 
         if (!encontrouChao)
         {
-            // Sem chão detectado:
-            // volta para a posição reta.
-            alvo =
-                rotacaoHorizontal;
+            alvo = rotacaoHorizontal;
         }
         else
         {
             float anguloRampa =
-                Vector3.Angle(
-                    hit.normal,
-                    Vector3.up
-                );
+                Vector3.Angle(hit.normal, Vector3.up);
 
-            if (anguloRampa >
-                limiteInclinacaoRampa)
+            if (anguloRampa > limiteInclinacaoRampa)
             {
-                alvo =
-                    rotacaoHorizontal;
+                alvo = rotacaoHorizontal;
             }
             else
             {
-                // Direção do personagem projetada
-                // sobre a superfície da rampa.
                 Vector3 frente =
-                    rotacaoHorizontal *
-                    Vector3.forward;
+                    rotacaoHorizontal * Vector3.forward;
 
                 Vector3 frenteNaRampa =
-                    Vector3.ProjectOnPlane(
-                        frente,
-                        hit.normal
-                    );
+                    Vector3.ProjectOnPlane(frente, hit.normal);
 
-                if (frenteNaRampa.sqrMagnitude <
-                    0.001f)
-                {
-                    frenteNaRampa =
-                        frente;
-                }
+                if (frenteNaRampa.sqrMagnitude < 0.001f)
+                    frenteNaRampa = frente;
 
                 frenteNaRampa.Normalize();
 
-                // Mantém o personagem seguindo
-                // a superfície da rampa.
-                alvo =
-                    Quaternion.LookRotation(
-                        frenteNaRampa,
-                        hit.normal
-                    );
+                alvo = Quaternion.LookRotation(
+                    frenteNaRampa,
+                    hit.normal
+                );
             }
         }
 
-        rotacaoRampaAtual =
-            Quaternion.Slerp(
-                transform.rotation,
-                alvo,
-                suavidadeRampa *
-                Time.deltaTime
-            );
+        rotacaoRampaAtual = Quaternion.Slerp(
+            transform.rotation,
+            alvo,
+            suavidadeRampa * Time.deltaTime
+        );
+
+        transform.rotation = rotacaoRampaAtual;
+    }
+
+    void AtualizarRotacaoNoAr()
+    {
+        if (controller.isGrounded)
+            return;
+
+        Vector3 direcaoMovimento =
+            velocidadeHorizontal + impulsoMomentum;
+
+        direcaoMovimento.y = 0f;
+
+        if (direcaoMovimento.sqrMagnitude < 0.01f)
+            return;
+
+        float anguloDesejado =
+            Mathf.Atan2(
+                direcaoMovimento.x,
+                direcaoMovimento.z
+            ) * Mathf.Rad2Deg;
+
+        rotacaoY = Mathf.LerpAngle(
+            rotacaoY,
+            anguloDesejado,
+            velocidadeRotacaoNoAr * Time.deltaTime
+        );
 
         transform.rotation =
-            rotacaoRampaAtual;
+            Quaternion.Euler(0f, rotacaoY, 0f);
     }
 
     bool EncontrarChao(out RaycastHit melhorHit)
     {
         Vector3 origem =
             transform.position +
-            Vector3.up *
-            alturaOrigemRaycast;
+            Vector3.up * alturaOrigemRaycast;
 
-        RaycastHit[] hits =
-            Physics.RaycastAll(
-                origem,
-                Vector3.down,
-                distanciaDeteccaoRampa,
-                Physics.AllLayers,
-                QueryTriggerInteraction.Ignore
-            );
+        RaycastHit[] hits = Physics.RaycastAll(
+            origem,
+            Vector3.down,
+            distanciaDeteccaoRampa,
+            Physics.AllLayers,
+            QueryTriggerInteraction.Ignore
+        );
 
-        float menorDistancia =
-            float.MaxValue;
-
+        float menorDistancia = float.MaxValue;
         bool encontrou = false;
 
         melhorHit = new RaycastHit();
 
-        for (int i = 0;
-             i < hits.Length;
-             i++)
+        for (int i = 0; i < hits.Length; i++)
         {
-            RaycastHit hit =
-                hits[i];
+            RaycastHit hit = hits[i];
 
             if (hit.collider == null)
                 continue;
 
-            Transform objeto =
-                hit.collider.transform;
+            Transform objeto = hit.collider.transform;
 
-            // Ignora o próprio Personagem
             if (objeto == transform)
                 continue;
 
-            // Ignora qualquer coisa filha dele
             if (objeto.IsChildOf(transform))
                 continue;
 
-            if (hit.distance <
-                menorDistancia)
+            if (hit.distance < menorDistancia)
             {
-                menorDistancia =
-                    hit.distance;
-
-                melhorHit =
-                    hit;
-
+                menorDistancia = hit.distance;
+                melhorHit = hit;
                 encontrou = true;
             }
         }
@@ -619,80 +528,47 @@ public class PlayerMovement : MonoBehaviour
         if (partesVisuais.Count == 0)
             return;
 
-        // No ar mantém a última inclinação.
         if (!controller.isGrounded)
             return;
 
         float velocidade;
 
-        if (Mathf.Abs(
-                inclinacaoAlvoZ
-            ) > 0.01f)
-        {
-            velocidade =
-                velocidadeInclinacao;
-        }
+        if (Mathf.Abs(inclinacaoAlvoZ) > 0.01f)
+            velocidade = velocidadeInclinacao;
         else
-        {
-            velocidade =
-                velocidadeRetorno;
-        }
+            velocidade = velocidadeRetorno;
 
-        inclinacaoZ =
-            Mathf.MoveTowards(
-                inclinacaoZ,
-                inclinacaoAlvoZ,
-                velocidade *
-                Time.deltaTime
-            );
+        inclinacaoZ = Mathf.MoveTowards(
+            inclinacaoZ,
+            inclinacaoAlvoZ,
+            velocidade * Time.deltaTime
+        );
 
         Quaternion inclinacao =
-            Quaternion.Euler(
-                0f,
-                0f,
-                inclinacaoZ
-            );
+            Quaternion.Euler(0f, 0f, inclinacaoZ);
 
-        Vector3 centro =
-            transform.position;
+        Vector3 centro = transform.position;
 
         Quaternion rotacaoMundo =
             transform.rotation *
             inclinacao *
-            Quaternion.Inverse(
-                transform.rotation
-            );
+            Quaternion.Inverse(transform.rotation);
 
-        for (int i = 0;
-             i < partesVisuais.Count;
-             i++)
+        for (int i = 0; i < partesVisuais.Count; i++)
         {
-            Transform parte =
-                partesVisuais[i];
+            Transform parte = partesVisuais[i];
 
             if (parte == null)
                 continue;
 
-            Vector3 offset =
-                parte.position -
-                centro;
+            Vector3 offset = parte.position - centro;
+            Vector3 novoOffset = rotacaoMundo * offset;
 
-            Vector3 novoOffset =
-                rotacaoMundo *
-                offset;
-
-            parte.position =
-                centro +
-                novoOffset;
-
-            parte.rotation =
-                rotacaoMundo *
-                parte.rotation;
+            parte.position = centro + novoOffset;
+            parte.rotation = rotacaoMundo * parte.rotation;
         }
 
-        if (Mathf.Abs(
-                inclinacaoAlvoZ
-            ) < 0.01f &&
+        if (Mathf.Abs(inclinacaoAlvoZ) < 0.01f &&
             Mathf.Abs(inclinacaoZ) < 0.05f)
         {
             inclinacaoZ = 0f;
@@ -710,17 +586,12 @@ public class PlayerMovement : MonoBehaviour
         if (!controller.isGrounded)
             return;
 
-        velocidadeVertical =
-            forcaPulo;
+        velocidadeVertical = forcaPulo;
 
         TocarVfx();
 
         if (animator != null)
-        {
-            animator.SetTrigger(
-                "Pular"
-            );
-        }
+            animator.SetTrigger("Pular");
     }
 
     void ProcessarDash()
@@ -734,9 +605,7 @@ public class PlayerMovement : MonoBehaviour
         if (estaEmImpulso)
             return;
 
-        // =========================
         // NO AR
-        // =========================
 
         if (!controller.isGrounded)
         {
@@ -750,9 +619,7 @@ public class PlayerMovement : MonoBehaviour
             return;
         }
 
-        // =========================
         // NO CHÃO
-        // =========================
 
         FazerDashHorizontal();
     }
@@ -765,29 +632,22 @@ public class PlayerMovement : MonoBehaviour
         if (momentum < momentumMinimoDash)
             return;
 
-        float momentumUsado =
-            Mathf.Min(
-                momentum,
-                momentumMaximoDash
-            );
+        float momentumUsado = Mathf.Min(
+            momentum,
+            momentumMaximoDash
+        );
 
         velocidadeVertical =
             forcaPulo +
-            momentumUsado *
-            multiplicadorMomentumPulo;
+            momentumUsado * multiplicadorMomentumPulo;
 
         momentum -= momentumUsado;
-
         segundoPuloUsado = true;
 
         TocarVfx();
 
         if (animator != null)
-        {
-            animator.SetTrigger(
-                "DashCima"
-            );
-        }
+            animator.SetTrigger("DashCima");
     }
 
     void FazerDashHorizontal()
@@ -795,17 +655,14 @@ public class PlayerMovement : MonoBehaviour
         if (momentum < momentumMinimoDash)
             return;
 
-        float momentumAntesDoDash =
-            momentum;
+        float momentumAntesDoDash = momentum;
 
-        Vector3 direcaoDash =
-            PegarDirecaoDash();
+        Vector3 direcaoDash = PegarDirecaoDash();
 
-        float momentumUsado =
-            Mathf.Min(
-                momentum,
-                momentumMaximoDash
-            );
+        float momentumUsado = Mathf.Min(
+            momentum,
+            momentumMaximoDash
+        );
 
         impulsoMomentum =
             direcaoDash *
@@ -813,11 +670,9 @@ public class PlayerMovement : MonoBehaviour
             multiplicadorImpulso;
 
         momentum -= momentumUsado;
-
         estaEmImpulso = true;
 
-        correrAposDash =
-            momentumAntesDoDash > 15f;
+        correrAposDash = momentumAntesDoDash > 15f;
 
         if (correrAposDash)
         {
@@ -836,19 +691,9 @@ public class PlayerMovement : MonoBehaviour
 
         if (animator != null)
         {
-            animator.SetBool(
-                "Andando",
-                false
-            );
-
-            animator.SetBool(
-                "Correndo",
-                false
-            );
-
-            animator.SetTrigger(
-                "Dash"
-            );
+            animator.SetBool("Andando", false);
+            animator.SetBool("Correndo", false);
+            animator.SetTrigger("Dash");
         }
     }
 
@@ -887,11 +732,8 @@ public class PlayerMovement : MonoBehaviour
         if (Keyboard.current.sKey.isPressed)
             z = -1f;
 
-        Vector3 frente =
-            cameraTransform.forward;
-
-        Vector3 direita =
-            cameraTransform.right;
+        Vector3 frente = cameraTransform.forward;
+        Vector3 direita = cameraTransform.right;
 
         frente.y = 0f;
         direita.y = 0f;
@@ -899,14 +741,10 @@ public class PlayerMovement : MonoBehaviour
         frente.Normalize();
         direita.Normalize();
 
-        Vector3 direcao =
-            frente * z +
-            direita * x;
+        Vector3 direcao = frente * z + direita * x;
 
         if (direcao.sqrMagnitude < 0.001f)
-        {
             return transform.forward;
-        }
 
         return direcao.normalized;
     }
@@ -916,34 +754,25 @@ public class PlayerMovement : MonoBehaviour
         if (!estaEmImpulso)
             return;
 
-        impulsoMomentum =
-            Vector3.MoveTowards(
-                impulsoMomentum,
-                Vector3.zero,
-                desaceleracaoImpulso *
-                Time.deltaTime
-            );
+        impulsoMomentum = Vector3.MoveTowards(
+            impulsoMomentum,
+            Vector3.zero,
+            desaceleracaoImpulso * Time.deltaTime
+        );
 
         if (impulsoMomentum.magnitude < 0.05f)
         {
-            impulsoMomentum =
-                Vector3.zero;
-
+            impulsoMomentum = Vector3.zero;
             estaEmImpulso = false;
         }
     }
 
     void AplicarGravidade()
     {
-        if (controller.isGrounded &&
-            velocidadeVertical < 0f)
-        {
+        if (controller.isGrounded && velocidadeVertical < 0f)
             velocidadeVertical = -2f;
-        }
 
-        velocidadeVertical +=
-            gravidade *
-            Time.deltaTime;
+        velocidadeVertical += gravidade * Time.deltaTime;
     }
 
     void TocarVfx()
@@ -952,19 +781,13 @@ public class PlayerMovement : MonoBehaviour
             return;
 
         if (!vfxPulo.gameObject.activeSelf)
-        {
             vfxPulo.gameObject.SetActive(true);
-        }
 
-        Vector3 posicao =
-            transform.position;
+        Vector3 posicao = transform.position;
 
-        posicao.y =
-            controller.bounds.min.y +
-            0.02f;
+        posicao.y = controller.bounds.min.y + 0.02f;
 
-        vfxPulo.transform.position =
-            posicao;
+        vfxPulo.transform.position = posicao;
 
         vfxPulo.Stop(
             true,
